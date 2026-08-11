@@ -30,7 +30,7 @@ def main() -> None:
     spark = SparkSession.builder.appName("flight-data-validation").getOrCreate()
     try:
         df = spark.read.option("header", True).option("inferSchema", True).csv(
-            f"file://{Path(args.input).resolve()}"
+            Path(args.input).resolve().as_uri()
         )
 
         if df.columns != EXPECTED:
