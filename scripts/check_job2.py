@@ -72,7 +72,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def read_result(spark: SparkSession, path: str):
-    return spark.read.schema(SCHEMA).option("header", False).csv(path)
+    df = spark.read.schema(SCHEMA).option("header", False).csv(path)
+
+    # Hive TextFile output serializes null STRING values as the literal "\\N".
+    # Spark CSV output uses empty fields for nulls. Normalize both to logical
+    # nulls before comparing implementations.
+    for name in STRING_COLUMNS:
+        df = df.withColumn(
+            name,
+            F.when(F.col(name) == r"\N", F.lit(None).cast("string"))
+            .otherwise(F.col(name))
+        )
+
+    return df
 
 
 def null_safe_exact(left, right):
