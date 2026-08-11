@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Create the canonical cleaned Flight Delay 2024 dataset.
 
-The script intentionally keeps data-preparation semantics independent from the
-three analytical technologies that will consume the result.
+The script keeps data-preparation semantics independent from the analytical
+technology (Hive, Spark Core, Spark SQL) that will consume the result.
 """
 
 from __future__ import annotations
@@ -60,7 +60,7 @@ def require_columns(df: DataFrame) -> None:
 
 
 def normalize_base_columns(df: DataFrame) -> DataFrame:
-    """Cast/normalize fields while preserving null delay values and negatives."""
+    """Cast/normalize fields while preserving null delays and negative values."""
     out = (
         df.select(*sorted(REQUIRED_COLUMNS))
         .withColumn("month", F.col("month").cast(IntegerType()))
@@ -73,8 +73,9 @@ def normalize_base_columns(df: DataFrame) -> DataFrame:
         .withColumn("cancellation_code", F.upper(F.trim(F.col("cancellation_code"))))
     )
 
-    # The Kaggle dataset already documents the cause-delay columns as filled
-    # with zero when missing. Coalesce is kept defensively for reproducibility.
+    # Cause-delay columns represent minutes attributed to each category.
+    # Missing values are normalized to zero so all three technologies consume
+    # the same explicit representation.
     for name in DELAY_COLUMNS:
         out = out.withColumn(
             name,
@@ -85,6 +86,7 @@ def normalize_base_columns(df: DataFrame) -> DataFrame:
 
 
 def filter_invalid_rows(df: DataFrame) -> DataFrame:
+    """Apply only row-level rules already fixed in the data contract."""
     return df.filter(
         (F.col("diverted") == 0)
         & F.col("month").between(1, 12)
@@ -96,20 +98,9 @@ def filter_invalid_rows(df: DataFrame) -> DataFrame:
     )
 
 
-def add_normalized_cause(df: DataFrame) -> DataFrame:
-    max_delay = F.greatest(*[F.col(c) for c in DELAY_COLUMNS])
-
-    # Deterministic tie-breaking is explicit through the order of the clauses.
-    dominant_delay_cause = (
-        F.when(max_delay <= 0.0, F.lit(None).cast("string"))
-        .when(F.col("carrier_delay") == max_delay, F.lit("CARRIER"))
-        .when(F.col("weather_delay") == max_delay, F.lit("WEATHER"))
-        .when(F.col("nas_delay") == max_delay, F.lit("NAS"))
-        .when(F.col("security_delay") == max_delay, F.lit("SECURITY"))
-        .otherwise(F.lit("LATE_AIRCRAFT"))
-    )
-
-    cancellation_cause = (
+def add_cancellation_cause(df: DataFrame) -> DataFrame:
+    """Normalize cancellation codes while preserving all delay-cause columns."""
+    normalized = (
         F.when(F.col("cancellation_code") == "A", F.lit("CARRIER"))
         .when(F.col("cancellation_code") == "B", F.lit("WEATHER"))
         .when(F.col("cancellation_code") == "C", F.lit("NAS"))
@@ -117,25 +108,11 @@ def add_normalized_cause(df: DataFrame) -> DataFrame:
         .otherwise(F.lit(None).cast("string"))
     )
 
-    return (
-        df.withColumn(
-            "cause",
-            F.when(F.col("cancelled") == 1, cancellation_cause).otherwise(
-                dominant_delay_cause
-            ),
-        )
-        .withColumn(
-            "cause_type",
-            F.when(
-                (F.col("cancelled") == 1) & F.col("cause").isNotNull(),
-                F.lit("CANCELLATION"),
-            )
-            .when(
-                (F.col("cancelled") == 0) & F.col("cause").isNotNull(),
-                F.lit("DELAY"),
-            )
-            .otherwise(F.lit(None).cast("string")),
-        )
+    return df.withColumn(
+        "cancellation_cause",
+        F.when(F.col("cancelled") == 1, normalized).otherwise(
+            F.lit(None).cast("string")
+        ),
     )
 
 
@@ -143,7 +120,7 @@ def build_canonical_dataset(raw: DataFrame) -> DataFrame:
     require_columns(raw)
     clean = normalize_base_columns(raw)
     clean = filter_invalid_rows(clean)
-    clean = add_normalized_cause(clean)
+    clean = add_cancellation_cause(clean)
 
     return clean.select(
         "month",
@@ -152,17 +129,21 @@ def build_canonical_dataset(raw: DataFrame) -> DataFrame:
         "dep_delay",
         "arr_delay",
         "cancelled",
-        "cause_type",
-        "cause",
+        "cancellation_cause",
+        "carrier_delay",
+        "weather_delay",
+        "nas_delay",
+        "security_delay",
+        "late_aircraft_delay",
     )
 
 
 def write_single_csv(df: DataFrame, output_file: str) -> None:
     """Write one canonical CSV file.
 
-    This deliberate single-file consolidation happens during preprocessing, not
-    inside analytical benchmarks. It simplifies identical ingestion across Hive,
-    Spark Core and Spark SQL. The trade-off must be disclosed in the report.
+    The single-file consolidation is deliberate during preprocessing only. It
+    simplifies identical ingestion across Hive, Spark Core and Spark SQL. The
+    preprocessing cost is kept separate from analytical benchmark timings.
     """
     output = Path(output_file).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -177,7 +158,7 @@ def write_single_csv(df: DataFrame, output_file: str) -> None:
         df.coalesce(1)
         .write.mode("overwrite")
         .option("header", True)
-        .csv(temp_dir.resolve().as_uri())
+        .csv(temp_dir.as_uri())
     )
 
     part_files = list(temp_dir.glob("part-*.csv"))
@@ -191,6 +172,7 @@ def write_single_csv(df: DataFrame, output_file: str) -> None:
 def main() -> None:
     args = parse_args()
     spark = SparkSession.builder.appName("flight-data-preprocessing").getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")
 
     try:
         raw = (
