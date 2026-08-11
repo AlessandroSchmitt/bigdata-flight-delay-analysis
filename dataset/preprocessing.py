@@ -177,7 +177,7 @@ def write_single_csv(df: DataFrame, output_file: str) -> None:
         df.coalesce(1)
         .write.mode("overwrite")
         .option("header", True)
-        .csv(f"file://{temp_dir}")
+        .csv(temp_dir.resolve().as_uri())
     )
 
     part_files = list(temp_dir.glob("part-*.csv"))
@@ -196,7 +196,7 @@ def main() -> None:
         raw = (
             spark.read.option("header", True)
             .option("inferSchema", True)
-            .csv(f"file://{Path(args.input).resolve()}")
+            .csv(Path(args.input).resolve().as_uri())
         )
 
         canonical = build_canonical_dataset(raw)
