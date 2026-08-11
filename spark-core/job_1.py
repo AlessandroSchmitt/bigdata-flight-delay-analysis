@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+from decimal import Decimal, ROUND_HALF_UP
 from io import StringIO
 from pathlib import Path
 from typing import Iterable, Iterator, Optional, Tuple
@@ -101,6 +102,16 @@ def merge_accumulators(a: Accumulator, b: Accumulator) -> Accumulator:
 def format_optional(value: Optional[float]) -> str:
     return "" if value is None else str(value)
 
+def round_half_up(value: float, digits: int) -> float:
+    """Match the HALF_UP rounding semantics used by Spark SQL/Hive ROUND."""
+    quantum = Decimal("1").scaleb(-digits)
+    return float(
+        Decimal(str(value)).quantize(
+            quantum,
+            rounding=ROUND_HALF_UP
+        )
+    )
+
 
 def format_result(
     item: Tuple[Tuple[str, str], Accumulator]
@@ -117,11 +128,14 @@ def format_result(
     ) = stats
 
     avg_delay = (
-        round(delay_sum / valid_delay_count, 2)
-        if valid_delay_count > 0
-        else None
+    round_half_up(delay_sum / valid_delay_count, 2)
+    if valid_delay_count > 0
+    else None
     )
-    cancellation_rate = round(cancelled_count / flight_count, 4)
+    cancellation_rate = round_half_up(
+    cancelled_count / flight_count,
+    4
+    )
     operating_months = "|".join(f"{month:02d}" for month in sorted(months))
 
     fields = [

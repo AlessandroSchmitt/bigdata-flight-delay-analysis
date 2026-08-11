@@ -41,10 +41,10 @@ For each key:
   flights;
 - `min_arr_delay`: minimum non-null `arr_delay`;
 - `max_arr_delay`: maximum non-null `arr_delay`;
-- `avg_arr_delay`: average over non-null `arr_delay` values only, rounded to 2
-  decimal places;
-- `cancellation_rate`: `cancelled_flights / flight_count`, rounded to 4 decimal
-  places;
+- `avg_arr_delay`: average over non-null `arr_delay` values only,
+   rounded to 2 decimal places using HALF_UP rounding;
+- `cancellation_rate`: `cancelled_flights / flight_count`,
+   rounded to 4 decimal places using HALF_UP rounding;
 - `operating_months`: distinct months appearing in the group, sorted
   chronologically and formatted as `01|02|...|12`.
 
