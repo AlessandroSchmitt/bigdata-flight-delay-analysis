@@ -1,0 +1,30 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+
+# Dataset - never version raw/processed data
+data/
+
+# Generated outputs
+outputs/
+tmp/
+logs/
+
+# Spark / Hive local artifacts
+spark-warehouse/
+metastore_db/
+derby.log
+.sparkStaging/
+
+# Credentials / secrets
+.env
+kaggle.json
+access_token
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
