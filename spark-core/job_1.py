@@ -162,8 +162,8 @@ def main() -> None:
     sc.setLogLevel("WARN")
 
     try:
-        input_uri = Path(args.input).resolve().as_uri()
-        output_uri = Path(args.output).resolve().as_uri()
+        input_uri = args.input if "://" in args.input else Path(args.input).resolve().as_uri()
+        output_uri = args.output if "://" in args.output else Path(args.output).resolve().as_uri()
 
         lines = sc.textFile(input_uri)
 

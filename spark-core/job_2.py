@@ -204,7 +204,7 @@ def main() -> None:
 
     try:
         records = (
-            sc.textFile(Path(args.input).resolve().as_uri())
+            sc.textFile(args.input if "://" in args.input else Path(args.input).resolve().as_uri())
             .mapPartitionsWithIndex(parse_partition)
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
@@ -234,7 +234,7 @@ def main() -> None:
             .map(format_result)
         )
 
-        result.saveAsTextFile(Path(args.output).resolve().as_uri())
+        result.saveAsTextFile(args.output if "://" in args.output else Path(args.output).resolve().as_uri())
 
         print(f"[OK] Spark Core Job 2 written to: {Path(args.output).resolve()}")
     finally:

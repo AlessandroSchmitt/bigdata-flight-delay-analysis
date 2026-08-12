@@ -59,7 +59,7 @@ def main() -> None:
             spark.read
             .option("header", True)
             .schema(SCHEMA)
-            .csv(Path(args.input).resolve().as_uri())
+            .csv(args.input if "://" in args.input else Path(args.input).resolve().as_uri())
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
 
@@ -298,7 +298,7 @@ def main() -> None:
             result.write
             .mode("overwrite")
             .option("header", False)
-            .csv(Path(args.output).resolve().as_uri())
+            .csv(args.output if "://" in args.output else Path(args.output).resolve().as_uri())
         )
 
         print(
