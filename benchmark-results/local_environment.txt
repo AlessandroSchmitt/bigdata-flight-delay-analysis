@@ -1,0 +1,80 @@
+=== TIMESTAMP ===
+2026-08-12T13:20:24+00:00
+
+=== GIT COMMIT ===
+4058170f7e0b4be02a2c7f574766feebcb99130a
+
+=== GIT STATUS ===
+
+=== CPU ===
+2
+CPU(s):                                  2
+On-line CPU(s) list:                     0,1
+Model name:                              Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz
+CPU(s) scaling MHz:                      124%
+NUMA node0 CPU(s):                       0,1
+
+=== MEMORY ===
+               total        used        free      shared  buff/cache   available
+Mem:           7.8Gi       3.1Gi       827Mi        65Mi       4.2Gi       4.7Gi
+Swap:             0B          0B          0B
+
+=== JAVA ===
+openjdk version "17.0.20" 2026-07-21
+OpenJDK Runtime Environment Temurin-17.0.20+8 (build 17.0.20+8)
+OpenJDK 64-Bit Server VM Temurin-17.0.20+8 (build 17.0.20+8, mixed mode, sharing)
+
+=== PYTHON ===
+Python 3.12.1
+
+=== SPARK ===
+26/08/12 13:20:26 WARN Utils: Your hostname, codespaces-c6dbc7 resolves to a loopback address: 127.0.0.1; using 10.0.11.198 instead (on interface eth0)
+26/08/12 13:20:26 WARN Utils: Set SPARK_LOCAL_IP if you need to bind to another address
+Welcome to
+      ____              __
+     / __/__  ___ _____/ /__
+    _\ \/ _ \/ _ `/ __/  '_/
+   /___/ .__/\_,_/_/ /_/\_\   version 3.5.5
+      /_/
+                        
+Using Scala version 2.12.18, OpenJDK 64-Bit Server VM, 17.0.20
+Branch HEAD
+Compiled by user ubuntu on 2025-02-23T20:30:46Z
+Revision 7c29c664cdc9321205a98a14858aaf8daaa19db2
+Url https://github.com/apache/spark
+Type --help for more information.
+
+=== HIVE CONTAINER ===
+image=apache/hive:4.1.0 running=true
+
+=== HIVE ENGINE ===
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/opt/hive/lib/log4j-slf4j-impl-2.24.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/opt/hadoop/share/hadoop/common/lib/slf4j-reload4j-1.7.36.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+SLF4J: Class path contains multiple SLF4J bindings.
+SLF4J: Found binding in [jar:file:/opt/hive/lib/log4j-slf4j-impl-2.24.3.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: Found binding in [jar:file:/opt/hadoop/share/hadoop/common/lib/slf4j-reload4j-1.7.36.jar!/org/slf4j/impl/StaticLoggerBinder.class]
+SLF4J: See http://www.slf4j.org/codes.html#multiple_bindings for an explanation.
+SLF4J: Actual binding is of type [org.apache.logging.slf4j.Log4jLoggerFactory]
+2026-08-12T13:20:28.935735729Z main WARN The use of package scanning to locate Log4j plugins is deprecated.
+Please remove the `packages` attribute from your configuration file.
+See https://logging.apache.org/log4j/2.x/faq.html#package-scanning for details.
+2026-08-12T13:20:29.062463439Z main INFO Starting configuration org.apache.logging.log4j.core.config.properties.PropertiesConfiguration@436c81a3...
+2026-08-12T13:20:29.062907061Z main INFO Start watching for changes to jar:file:/opt/hive/lib/hive-beeline-4.1.0.jar!/beeline-log4j2.properties every 0 seconds
+2026-08-12T13:20:29.063358820Z main INFO Configuration org.apache.logging.log4j.core.config.properties.PropertiesConfiguration@436c81a3 started.
+2026-08-12T13:20:29.065911599Z main INFO Stopping configuration org.apache.logging.log4j.core.config.DefaultConfiguration@2df9b86...
+2026-08-12T13:20:29.066391522Z main INFO Configuration org.apache.logging.log4j.core.config.DefaultConfiguration@2df9b86 stopped.
+Connecting to jdbc:hive2://localhost:10000/default
+Connected to: Apache Hive (version 4.1.0)
+Driver: Hive JDBC (version 4.1.0)
+Transaction isolation: TRANSACTION_REPEATABLE_READ
++----------------------------+
+|            set             |
++----------------------------+
+| hive.execution.engine=tez  |
++----------------------------+
+1 row selected (0.069 seconds)
+Beeline version 4.1.0 by Apache Hive
+Closing: 0: jdbc:hive2://localhost:10000/default
