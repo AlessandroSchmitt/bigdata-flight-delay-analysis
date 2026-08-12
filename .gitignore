@@ -22,6 +22,8 @@ derby.log
 .env
 kaggle.json
 access_token
+*.pem
+*.key
 
 # IDE / OS
 .vscode/

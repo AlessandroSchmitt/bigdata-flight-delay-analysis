@@ -86,4 +86,4 @@ Top-3 causes are computed for the same `(origin, month)` from the flight-cause i
 
 ## Benchmark rule
 
-All technologies must consume the same canonical cleaned CSV. Preprocessing time is measured separately from analytical job time. Spark benchmark runs must avoid triggering the same logical computation twice merely to both preview and save the output.
+All technologies must consume the same canonical cleaned CSV. Preprocessing is performed separately and is excluded from the analytical benchmark timings. Spark benchmark runs must avoid triggering the same logical computation twice merely to both preview and save the output.
