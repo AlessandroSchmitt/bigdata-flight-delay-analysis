@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Analysis 3.2 implemented with Spark SQL/DataFrame API."""
+"""Analysis 3.2 implemented with explicit Spark SQL."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import argparse
 from pathlib import Path
 
 from pyspark import StorageLevel
-from pyspark.sql import SparkSession, Window, functions as F
+from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
     IntegerType,
@@ -34,14 +34,6 @@ SCHEMA = StructType(
     ]
 )
 
-CAUSE_COLUMNS = [
-    ("CARRIER", "carrier_delay"),
-    ("WEATHER", "weather_delay"),
-    ("NAS", "nas_delay"),
-    ("SECURITY", "security_delay"),
-    ("LATE_AIRCRAFT", "late_aircraft_delay"),
-]
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -52,151 +44,270 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    spark = SparkSession.builder.appName("analysis-3.2-spark-sql").getOrCreate()
+
+    spark = (
+        SparkSession.builder
+        .appName("analysis-3.2-spark-sql")
+        .getOrCreate()
+    )
     spark.sparkContext.setLogLevel("WARN")
+
+    flights = None
 
     try:
         flights = (
-            spark.read.option("header", True)
+            spark.read
+            .option("header", True)
             .schema(SCHEMA)
             .csv(Path(args.input).resolve().as_uri())
             .persist(StorageLevel.MEMORY_AND_DISK)
         )
 
-        eligible = (F.col("cancelled") == 0) & F.col("dep_delay").isNotNull()
-        low = eligible & (F.col("dep_delay") < 15)
-        medium = eligible & F.col("dep_delay").between(15, 60)
-        high = eligible & (F.col("dep_delay") > 60)
+        # The same canonical relation is referenced by two analytical branches
+        # in the SQL query. Persisting it avoids reparsing the CSV independently.
+        flights.createOrReplaceTempView("flights")
 
-        band_stats = (
-            flights.groupBy("origin", "month")
-            .agg(
-                F.sum(F.when(low, 1).otherwise(0)).alias("low_count"),
-                F.round(F.avg(F.when(low, F.col("dep_delay"))), 2).alias(
-                    "low_avg_dep_delay"
-                ),
-                F.round(F.avg(F.when(low, F.col("arr_delay"))), 2).alias(
-                    "low_avg_arr_delay"
-                ),
-                F.sum(F.when(medium, 1).otherwise(0)).alias("medium_count"),
-                F.round(F.avg(F.when(medium, F.col("dep_delay"))), 2).alias(
-                    "medium_avg_dep_delay"
-                ),
-                F.round(F.avg(F.when(medium, F.col("arr_delay"))), 2).alias(
-                    "medium_avg_arr_delay"
-                ),
-                F.sum(F.when(high, 1).otherwise(0)).alias("high_count"),
-                F.round(F.avg(F.when(high, F.col("dep_delay"))), 2).alias(
-                    "high_avg_dep_delay"
-                ),
-                F.round(F.avg(F.when(high, F.col("arr_delay"))), 2).alias(
-                    "high_avg_arr_delay"
-                ),
+        result = spark.sql(
+            """
+            WITH
+            band_stats AS (
+                SELECT
+                    origin,
+                    month,
+
+                    SUM(
+                        CASE
+                            WHEN cancelled = 0
+                             AND dep_delay IS NOT NULL
+                             AND dep_delay < 15
+                            THEN 1 ELSE 0
+                        END
+                    ) AS low_count,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay IS NOT NULL
+                                 AND dep_delay < 15
+                                THEN dep_delay
+                            END
+                        ),
+                        2
+                    ) AS low_avg_dep_delay,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay IS NOT NULL
+                                 AND dep_delay < 15
+                                THEN arr_delay
+                            END
+                        ),
+                        2
+                    ) AS low_avg_arr_delay,
+
+                    SUM(
+                        CASE
+                            WHEN cancelled = 0
+                             AND dep_delay BETWEEN 15 AND 60
+                            THEN 1 ELSE 0
+                        END
+                    ) AS medium_count,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay BETWEEN 15 AND 60
+                                THEN dep_delay
+                            END
+                        ),
+                        2
+                    ) AS medium_avg_dep_delay,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay BETWEEN 15 AND 60
+                                THEN arr_delay
+                            END
+                        ),
+                        2
+                    ) AS medium_avg_arr_delay,
+
+                    SUM(
+                        CASE
+                            WHEN cancelled = 0
+                             AND dep_delay IS NOT NULL
+                             AND dep_delay > 60
+                            THEN 1 ELSE 0
+                        END
+                    ) AS high_count,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay IS NOT NULL
+                                 AND dep_delay > 60
+                                THEN dep_delay
+                            END
+                        ),
+                        2
+                    ) AS high_avg_dep_delay,
+                    ROUND(
+                        AVG(
+                            CASE
+                                WHEN cancelled = 0
+                                 AND dep_delay IS NOT NULL
+                                 AND dep_delay > 60
+                                THEN arr_delay
+                            END
+                        ),
+                        2
+                    ) AS high_avg_arr_delay
+
+                FROM flights
+                GROUP BY origin, month
+            ),
+
+            cause_incidence AS (
+                SELECT
+                    origin,
+                    month,
+                    cause
+                FROM flights
+                LATERAL VIEW EXPLODE(
+                    ARRAY(
+                        CASE
+                            WHEN cancelled = 1
+                             AND cancellation_cause = 'CARRIER'
+                                THEN 'CARRIER'
+                            WHEN cancelled = 0
+                             AND carrier_delay > 0
+                                THEN 'CARRIER'
+                        END,
+                        CASE
+                            WHEN cancelled = 1
+                             AND cancellation_cause = 'WEATHER'
+                                THEN 'WEATHER'
+                            WHEN cancelled = 0
+                             AND weather_delay > 0
+                                THEN 'WEATHER'
+                        END,
+                        CASE
+                            WHEN cancelled = 1
+                             AND cancellation_cause = 'NAS'
+                                THEN 'NAS'
+                            WHEN cancelled = 0
+                             AND nas_delay > 0
+                                THEN 'NAS'
+                        END,
+                        CASE
+                            WHEN cancelled = 1
+                             AND cancellation_cause = 'SECURITY'
+                                THEN 'SECURITY'
+                            WHEN cancelled = 0
+                             AND security_delay > 0
+                                THEN 'SECURITY'
+                        END,
+                        CASE
+                            WHEN cancelled = 0
+                             AND late_aircraft_delay > 0
+                                THEN 'LATE_AIRCRAFT'
+                        END
+                    )
+                ) exploded AS cause
+                WHERE cause IS NOT NULL
+            ),
+
+            cause_counts AS (
+                SELECT
+                    origin,
+                    month,
+                    cause,
+                    COUNT(*) AS cause_count
+                FROM cause_incidence
+                GROUP BY origin, month, cause
+            ),
+
+            ranked_causes AS (
+                SELECT
+                    origin,
+                    month,
+                    cause,
+                    cause_count,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY origin, month
+                        ORDER BY cause_count DESC, cause ASC
+                    ) AS cause_rank
+                FROM cause_counts
+            ),
+
+            top_causes AS (
+                SELECT
+                    origin,
+                    month,
+                    MAX(
+                        CASE WHEN cause_rank = 1 THEN cause END
+                    ) AS top1_cause,
+                    MAX(
+                        CASE WHEN cause_rank = 1 THEN cause_count END
+                    ) AS top1_count,
+                    MAX(
+                        CASE WHEN cause_rank = 2 THEN cause END
+                    ) AS top2_cause,
+                    MAX(
+                        CASE WHEN cause_rank = 2 THEN cause_count END
+                    ) AS top2_count,
+                    MAX(
+                        CASE WHEN cause_rank = 3 THEN cause END
+                    ) AS top3_cause,
+                    MAX(
+                        CASE WHEN cause_rank = 3 THEN cause_count END
+                    ) AS top3_count
+                FROM ranked_causes
+                WHERE cause_rank <= 3
+                GROUP BY origin, month
             )
-        )
 
-        cancelled_causes = flights.select(
-            "origin",
-            "month",
-            F.when(
-                (F.col("cancelled") == 1)
-                & F.col("cancellation_cause").isNotNull(),
-                F.col("cancellation_cause"),
-            ).alias("cause"),
-        ).filter(F.col("cause").isNotNull())
-
-        delay_cause_array = F.array(
-            *[
-                F.when(
-                    (F.col("cancelled") == 0) & (F.col(column_name) > 0),
-                    F.lit(cause_name),
-                )
-                for cause_name, column_name in CAUSE_COLUMNS
-            ]
-        )
-
-        delay_causes = (
-            flights.select(
-                "origin",
-                "month",
-                F.explode(delay_cause_array).alias("cause"),
-            )
-            .filter(F.col("cause").isNotNull())
-        )
-
-        cause_counts = (
-            cancelled_causes.unionByName(delay_causes)
-            .groupBy("origin", "month", "cause")
-            .count()
-            .withColumnRenamed("count", "cause_count")
-        )
-
-        rank_window = Window.partitionBy("origin", "month").orderBy(
-            F.col("cause_count").desc(),
-            F.col("cause").asc(),
-        )
-
-        ranked = cause_counts.withColumn(
-            "cause_rank",
-            F.row_number().over(rank_window),
-        ).filter(F.col("cause_rank") <= 3)
-
-        top_causes = ranked.groupBy("origin", "month").agg(
-            F.max(F.when(F.col("cause_rank") == 1, F.col("cause"))).alias(
-                "top1_cause"
-            ),
-            F.max(F.when(F.col("cause_rank") == 1, F.col("cause_count"))).alias(
-                "top1_count"
-            ),
-            F.max(F.when(F.col("cause_rank") == 2, F.col("cause"))).alias(
-                "top2_cause"
-            ),
-            F.max(F.when(F.col("cause_rank") == 2, F.col("cause_count"))).alias(
-                "top2_count"
-            ),
-            F.max(F.when(F.col("cause_rank") == 3, F.col("cause"))).alias(
-                "top3_cause"
-            ),
-            F.max(F.when(F.col("cause_rank") == 3, F.col("cause_count"))).alias(
-                "top3_count"
-            ),
-        )
-
-        result = (
-            band_stats.join(top_causes, on=["origin", "month"], how="left")
-            .select(
-                F.col("origin").alias("departure_airport"),
-                "month",
-                "low_count",
-                "low_avg_dep_delay",
-                "low_avg_arr_delay",
-                "medium_count",
-                "medium_avg_dep_delay",
-                "medium_avg_arr_delay",
-                "high_count",
-                "high_avg_dep_delay",
-                "high_avg_arr_delay",
-                "top1_cause",
-                "top1_count",
-                "top2_cause",
-                "top2_count",
-                "top3_cause",
-                "top3_count",
-            )
+            SELECT
+                b.origin AS departure_airport,
+                b.month,
+                b.low_count,
+                b.low_avg_dep_delay,
+                b.low_avg_arr_delay,
+                b.medium_count,
+                b.medium_avg_dep_delay,
+                b.medium_avg_arr_delay,
+                b.high_count,
+                b.high_avg_dep_delay,
+                b.high_avg_arr_delay,
+                t.top1_cause,
+                t.top1_count,
+                t.top2_cause,
+                t.top2_count,
+                t.top3_cause,
+                t.top3_count
+            FROM band_stats b
+            LEFT JOIN top_causes t
+              ON b.origin = t.origin
+             AND b.month = t.month
+            """
         )
 
         (
-            result.write.mode("overwrite")
+            result.write
+            .mode("overwrite")
             .option("header", False)
             .csv(Path(args.output).resolve().as_uri())
         )
 
-        print(f"[OK] Spark SQL Job 2 written to: {Path(args.output).resolve()}")
+        print(
+            f"[OK] Spark SQL Job 2 written to: "
+            f"{Path(args.output).resolve()}"
+        )
     finally:
-        try:
+        if flights is not None:
             flights.unpersist()
-        except UnboundLocalError:
-            pass
         spark.stop()
 
 

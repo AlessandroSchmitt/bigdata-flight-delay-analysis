@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Analysis 3.1 implemented with Spark SQL/DataFrame API."""
+"""Analysis 3.1 implemented with explicit Spark SQL."""
 
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession
 from pyspark.sql.types import (
     DoubleType,
     IntegerType,
@@ -43,52 +43,61 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = parse_args()
-    spark = SparkSession.builder.appName("analysis-3.1-spark-sql").getOrCreate()
+
+    spark = (
+        SparkSession.builder
+        .appName("analysis-3.1-spark-sql")
+        .getOrCreate()
+    )
     spark.sparkContext.setLogLevel("WARN")
 
     try:
         flights = (
-            spark.read.option("header", True)
+            spark.read
+            .option("header", True)
             .schema(SCHEMA)
             .csv(Path(args.input).resolve().as_uri())
         )
 
-        result = (
-            flights.groupBy("op_unique_carrier", "origin")
-            .agg(
-                F.count(F.lit(1)).alias("flight_count"),
-                F.min("arr_delay").alias("min_arr_delay"),
-                F.max("arr_delay").alias("max_arr_delay"),
-                F.round(F.avg("arr_delay"), 2).alias("avg_arr_delay"),
-                F.round(
-                    F.sum(F.col("cancelled")) / F.count(F.lit(1)),
-                    4,
-                ).alias("cancellation_rate"),
-                F.sort_array(
-                    F.collect_set(
-                        F.lpad(F.col("month").cast("string"), 2, "0")
+        flights.createOrReplaceTempView("flights")
+
+        result = spark.sql(
+            """
+            SELECT
+                op_unique_carrier AS airline,
+                origin AS departure_airport,
+                COUNT(*) AS flight_count,
+                MIN(arr_delay) AS min_arr_delay,
+                MAX(arr_delay) AS max_arr_delay,
+                ROUND(AVG(arr_delay), 2) AS avg_arr_delay,
+                ROUND(
+                    CAST(SUM(cancelled) AS DOUBLE) / COUNT(*),
+                    4
+                ) AS cancellation_rate,
+                CONCAT_WS(
+                    '|',
+                    SORT_ARRAY(
+                        COLLECT_SET(
+                            LPAD(CAST(month AS STRING), 2, '0')
+                        )
                     )
-                ).alias("months"),
-            )
-            .select(
-                F.col("op_unique_carrier").alias("airline"),
-                F.col("origin").alias("departure_airport"),
-                "flight_count",
-                "min_arr_delay",
-                "max_arr_delay",
-                "avg_arr_delay",
-                "cancellation_rate",
-                F.concat_ws("|", F.col("months")).alias("operating_months"),
-            )
+                ) AS operating_months
+            FROM flights
+            GROUP BY op_unique_carrier, origin
+            """
         )
 
         (
-            result.write.mode("overwrite")
+            result.write
+            .mode("overwrite")
             .option("header", False)
             .csv(Path(args.output).resolve().as_uri())
         )
 
-        print(f"[OK] Spark SQL Job 1 written to: {Path(args.output).resolve()}")
+        print(
+            f"[OK] Spark SQL Job 1 written to: "
+            f"{Path(args.output).resolve()}"
+        )
     finally:
         spark.stop()
 
