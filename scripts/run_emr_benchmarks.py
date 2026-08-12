@@ -105,9 +105,49 @@ def cluster_state(cluster_id: str) -> str:
 
 def write_environment(cluster_id: str, path: Path, commit: str) -> None:
     cluster = aws_json(["emr", "describe-cluster", "--cluster-id", cluster_id])["Cluster"]
-    groups = aws_json(["emr", "list-instance-groups", "--cluster-id", cluster_id])["InstanceGroups"]
+
+    # AWS CLI v2 does not expose `emr list-instance-groups`.
+    # Capture the effective cluster topology from the actual EMR instances instead.
+    instance_groups = []
+    for group_type in ("MASTER", "CORE", "TASK"):
+        members = aws_json([
+            "emr", "list-instances",
+            "--cluster-id", cluster_id,
+            "--instance-group-types", group_type,
+        ]).get("Instances", [])
+
+        if not members:
+            continue
+
+        grouped = {}
+        for member in members:
+            key = (
+                member.get("InstanceType", "unknown"),
+                member.get("Market", "unknown"),
+            )
+            entry = grouped.setdefault(
+                key,
+                {
+                    "type": group_type,
+                    "instance_type": key[0],
+                    "market": key[1],
+                    "listed": 0,
+                    "running": 0,
+                },
+            )
+            entry["listed"] += 1
+            if member.get("Status", {}).get("State") == "RUNNING":
+                entry["running"] += 1
+
+        instance_groups.extend(grouped.values())
+
     region_cp = run(["aws", "configure", "get", "region"], check=False)
     region = region_cp.stdout.strip() or "unknown"
+
+    auto_termination = aws_json([
+        "emr", "get-auto-termination-policy",
+        "--cluster-id", cluster_id,
+    ]).get("AutoTerminationPolicy")
 
     payload = {
         "captured_at_utc": datetime.now(timezone.utc).isoformat(),
@@ -122,18 +162,8 @@ def write_environment(cluster_id: str, path: Path, commit: str) -> None:
         "subnet_id": cluster.get("Ec2InstanceAttributes", {}).get("Ec2SubnetId"),
         "service_role": cluster.get("ServiceRole"),
         "ec2_instance_profile": cluster.get("Ec2InstanceAttributes", {}).get("IamInstanceProfile"),
-        "auto_termination_policy": cluster.get("AutoTerminationPolicy"),
-        "instance_groups": [
-            {
-                "name": g.get("Name"),
-                "type": g.get("InstanceGroupType"),
-                "instance_type": g.get("InstanceType"),
-                "market": g.get("Market"),
-                "requested": g.get("RequestedInstanceCount"),
-                "running": g.get("RunningInstanceCount"),
-            }
-            for g in groups
-        ],
+        "auto_termination_policy": auto_termination,
+        "instance_groups": instance_groups,
         "timing_definition": {
             "primary_metric": "step_seconds",
             "step_seconds": "EMR Step StartDateTime to EndDateTime",
