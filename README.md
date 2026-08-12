@@ -1,5 +1,12 @@
 # Big Data Flight Delay Analysis
 
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Apache Spark](https://img.shields.io/badge/Apache%20Spark-3.5.5-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white)
+![Apache Hive](https://img.shields.io/badge/Apache%20Hive-4.1.0-FDEE21?style=for-the-badge&logo=apachehive&logoColor=black)
+![Apache Hadoop](https://img.shields.io/badge/Apache%20Hadoop-YARN-66CCFF?style=for-the-badge&logo=apachehadoop&logoColor=black)
+![Docker](https://img.shields.io/badge/Docker-Hive%20Environment-2496ED?style=for-the-badge&logo=docker&logoColor=white)
+![AWS](https://img.shields.io/badge/AWS-EMR-232F3E?style=for-the-badge&logo=amazonwebservices&logoColor=white)
+
 Progetto 2 del corso di **Big Data** (A.A. 2025/2026), Università degli Studi Roma Tre.
 
 Il progetto confronta tre tecnologie dell'ecosistema Big Data sul dataset **Flight Delay Dataset — 2024**:
